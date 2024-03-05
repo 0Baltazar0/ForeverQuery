@@ -1,5 +1,5 @@
-export function add(a: number, b: number): number {
-  return a + b;
-}
+import ForeverQueryProvider from "./ForeverQuery";
+import { useForeverQuery } from "./get";
+import { useMutateForeverQuery } from "./put";
 
-console.log(add(3, 5)); //output: 8
+export { useForeverQuery, useMutateForeverQuery, ForeverQueryProvider };
