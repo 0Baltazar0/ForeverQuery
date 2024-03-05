@@ -1,0 +1,30 @@
+{
+  "name": "forever-query",
+  "version": "0.0.1",
+  "description": "A server state query tool, with an added client state flavour. Heavily inspired by @tanstack/react-query",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0Baltazar0/ForeverQuery.git"
+  },
+  "keywords": [
+    "server-state",
+    "client-state",
+    "mutation",
+    "data",
+    "data-management"
+  ],
+  "author": "Boldizsar Pal",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/0Baltazar0/ForeverQuery/issues"
+  },
+  "homepage": "https://github.com/0Baltazar0/ForeverQuery#readme",
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
