@@ -23,13 +23,27 @@ export type PushMutationCall<
     | undefined
 ) => void;
 
-export class ForeverQuery {
-  private cacheManager: CacheManager = new CacheManager();
-  private hookManager: HookManager = new HookManager();
-  private runtime: NodeJS.Timeout | undefined = undefined;
+export interface ForeverQuerySettings {
+  logging?: "debug" | "info" | "error";
+  silentError?: boolean;
+  actionInterval?: number;
+}
 
-  constructor() {
-    this.runtime = setInterval(this.updater.bind(this), 2000);
+export class ForeverQuery {
+  private cacheManager: CacheManager;
+  private hookManager: HookManager;
+  private runtime: NodeJS.Timeout | undefined = undefined;
+  private logging;
+  private silentError;
+  private actionInterval;
+
+  constructor(settings?: ForeverQuerySettings) {
+    this.logging = settings?.logging ?? "debug";
+    this.silentError = settings?.silentError ?? false;
+    this.actionInterval = settings?.actionInterval ?? 2000;
+    this.runtime = setInterval(this.updater.bind(this), this.actionInterval);
+    this.cacheManager = new CacheManager();
+    this.hookManager = new HookManager();
   }
   updater = () => {
     this.sync();

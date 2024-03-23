@@ -17,8 +17,14 @@ export const ForeverQueryContext = createContext<ForeverQueryType>({
   pushMutation() {},
 });
 
-function ForeverQueryProvider({ children }: { children: React.ReactNode }) {
-  const [foreverQuery, _setForeverQuery] = useState(new ForeverQuery());
+function ForeverQueryProvider({
+  settings,
+  children,
+}: {
+  children: React.ReactNode;
+  settings?: { logging?: "debug" | "info" | "error"; silentError?: boolean };
+}) {
+  const [foreverQuery, _setForeverQuery] = useState(new ForeverQuery(settings));
 
   function useRegisterCache<T>(
     key: string,
