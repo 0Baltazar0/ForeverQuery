@@ -109,6 +109,13 @@ export class ForeverQuery<
     });
     return this.preBuildDataGetter(key).bind(this);
   }
+  removeConsumer(key: string, consumerId: string) {
+    this.consumerStorage.updateData(
+      key,
+      (consumers) =>
+        consumers?.filter((cs) => cs.consumerId != consumerId) ?? []
+    );
+  }
   pushMutation<K extends keyof Format & string>(
     key: K,
     fn: (
