@@ -41,16 +41,17 @@ export class ForeverQuery<
   ) {
     this.consumerStorage.getData(e.key).then((consumers) => {
       consumers.forEach((consumer) => {
-        if (consumer.onUpdate) consumer.onUpdate(e.data);
+        if (consumer.onUpdate) consumer.onUpdate({ query: e.data });
       });
     });
   }
   private onMutationChange<K extends keyof Format, Data extends Format[K]>(
     e: DatabaseUpstreamEvents<Data["data"]["mutation"]>
   ) {
+    console.log("Mutation is fired");
     this.consumerStorage.getData(e.key).then((consumers) => {
       consumers.forEach((consumer) => {
-        if (consumer.onUpdate) consumer.onUpdate(e.data);
+        if (consumer.onUpdate) consumer.onUpdate({ mutation: e.data });
       });
     });
   }

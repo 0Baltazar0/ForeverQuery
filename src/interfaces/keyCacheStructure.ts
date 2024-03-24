@@ -61,7 +61,7 @@ export type ConsumerSubscription<
     enforceDefinitions?: boolean;
     onUpdate?: (
       d:
-        | QueryPoolQuerySerialStructures<Q>
-        | QueryPoolMutationSerialStructures<M>
+        | { query: QueryPoolQuerySerialStructures<Q> }
+        | { mutation: QueryPoolMutationSerialStructures<M> }
     ) => void;
   };
