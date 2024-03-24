@@ -6,6 +6,7 @@ import {
   DefaultSerialStructure,
   QueryPoolDataStructure,
   QueryPoolMutationActiveStructures,
+  QueryPoolMutationSerialStructures,
   QueryPoolSerialStructures,
 } from "./interfaces/keyCacheStructure";
 import { NoExtraProperties } from "./interfaces/misc";
@@ -126,6 +127,9 @@ export class ForeverQuery<
         | undefined
     ) => Format[K]["data"]["mutation"] &
       QueryPoolMutationActiveStructures<
+        Format[K]["data"]["mutation"]["mutateData"]
+      > &
+      QueryPoolMutationSerialStructures<
         Format[K]["data"]["mutation"]["mutateData"]
       >
   ) {
