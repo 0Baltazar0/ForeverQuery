@@ -31,4 +31,7 @@ export class MemDB<T = any> implements CommonDataStorageAPI<T> {
       this.updateData(key, fn);
     } else this.createData(key, fn(undefined));
   }
+  async getAllKeys() {
+    return Object.keys(this.data);
+  }
 }

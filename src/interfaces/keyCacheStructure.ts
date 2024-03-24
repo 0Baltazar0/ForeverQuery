@@ -5,7 +5,7 @@ export const DefaultSerialStructure: QueryPoolSerialStructures<any, any> = {
     lastSuccessfullQuery: null,
     queryData: null,
     queryState: "idle",
-    queryInterval: null,
+    nextQueryCall: null,
   },
   mutation: {
     lastMutationState: "success",
@@ -22,7 +22,7 @@ export type QueryPoolQuerySerialStructures<Q> = {
   lastSuccessfullQuery: number | null;
   lastQuery: number | null;
   lastQueryState: "success" | "failure";
-  queryInterval: number | null;
+  nextQueryCall: number | null;
 };
 export type QueryPoolMutationSerialStructures<M> = {
   mutateData: M | null;
@@ -33,11 +33,13 @@ export type QueryPoolMutationSerialStructures<M> = {
 };
 export type QueryPoolQueryActiveStructures<Q> = {
   queryFn?: () => Promise<Q>;
-  nextQueryUpdate?: (response: Q) => number | null;
+  nextQueryUpdate?: ((response: Q) => number) | null;
+  queryInterval: number | null;
 };
 export type QueryPoolMutationActiveStructures<M> = {
   mutateFn?: () => Promise<M>;
-  pushMutationAtFn?: (data: M) => number | null;
+  pushMutationAtFn?: ((data: M) => number) | null;
+  mergeFn?: (oldQuery: any, newData: M) => M;
 };
 export type QueryPoolSerialStructures<Q, M> = {
   query: QueryPoolQuerySerialStructures<Q>;
@@ -55,13 +57,12 @@ export type QueryPoolDataStructure<Q, M> = {
 export type ConsumerSubscription<
   Q = any,
   M = any
-> = QueryPoolQueryActiveStructures<Q> &
-  Pick<QueryPoolQuerySerialStructures<Q>, "queryInterval"> & {
-    consumerId: string;
-    enforceDefinitions?: boolean;
-    onUpdate?: (
-      d:
-        | { query: QueryPoolQuerySerialStructures<Q> }
-        | { mutation: QueryPoolMutationSerialStructures<M> }
-    ) => void;
-  };
+> = QueryPoolQueryActiveStructures<Q> & {
+  consumerId: string;
+  enforceDefinitions?: boolean;
+  onUpdate?: (
+    d:
+      | { query: QueryPoolQuerySerialStructures<Q> }
+      | { mutation: QueryPoolMutationSerialStructures<M> }
+  ) => void;
+};

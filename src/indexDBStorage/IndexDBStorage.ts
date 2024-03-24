@@ -1,4 +1,4 @@
-import { del, get, set, update } from "idb-keyval";
+import { del, get, keys, set, update } from "idb-keyval";
 import { CommonDataStorageAPI } from "../interfaces/dataStorage";
 import { NoExtraProperties } from "../interfaces/misc";
 import { DatabaseUpstreamEvents } from "../interfaces/internalEvents";
@@ -56,5 +56,8 @@ export class IndexDBStore<T = any> implements CommonDataStorageAPI<T> {
       .catch((err) => {
         this.createData(key, fn(undefined));
       });
+  }
+  async getAllKeys() {
+    return (await keys()) as string[];
   }
 }

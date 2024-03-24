@@ -12,4 +12,5 @@ export interface CommonDataStorageAPI<D> {
     fn: (old: D | undefined) => NoExtraProperties<D>
   ) => void;
   deleteData: (key: string) => void;
+  getAllKeys: () => Promise<string[]>;
 }
