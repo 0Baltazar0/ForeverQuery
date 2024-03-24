@@ -1,6 +1,6 @@
 {
   "name": "forever-query",
-  "version": "0.0.2",
+  "version": "0.0.3-rc.0",
   "description": "A server state query tool, with an added client state flavour. Heavily inspired by @tanstack/react-query",
   "scripts": {
     "build": "tsc",
