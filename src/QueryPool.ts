@@ -17,14 +17,14 @@ export class ForeverQuery<
     [key: string]: QueryPoolDataStructure<any, any>;
   }
 > {
-  queryStorage: CommonDataStorageAPI<
+  private queryStorage: CommonDataStorageAPI<
     QueryPoolSerialStructures<any, any>["query"]
   >;
-  mutationStorage: MemDB<
+  private mutationStorage: MemDB<
     QueryPoolSerialStructures<any, any>["mutation"] &
       QueryPoolMutationActiveStructures<any>
   >;
-  consumerStorage: MemDB<ConsumerSubscription[]>;
+  private consumerStorage: MemDB<ConsumerSubscription[]>;
   constructor(defaultStorageTactic: "idb" | "memory" = "idb") {
     if (defaultStorageTactic == "idb" && window.indexedDB) {
       this.queryStorage = new IndexDBStore(true, this.onQueryChange.bind(this));
@@ -35,7 +35,7 @@ export class ForeverQuery<
     this.mutationStorage = new MemDB(true, this.onMutationChange.bind(this));
   }
 
-  onQueryChange<K extends keyof Format, Data extends Format[K]>(
+  private onQueryChange<K extends keyof Format, Data extends Format[K]>(
     e: DatabaseUpstreamEvents<Data["data"]["query"]>
   ) {
     this.consumerStorage.getData(e.key).then((consumers) => {
@@ -44,7 +44,7 @@ export class ForeverQuery<
       });
     });
   }
-  onMutationChange<K extends keyof Format, Data extends Format[K]>(
+  private onMutationChange<K extends keyof Format, Data extends Format[K]>(
     e: DatabaseUpstreamEvents<Data["data"]["mutation"]>
   ) {
     this.consumerStorage.getData(e.key).then((consumers) => {
@@ -53,11 +53,11 @@ export class ForeverQuery<
       });
     });
   }
-  onConsumerChange<K extends keyof Format, Data extends Format[K]>(
+  private onConsumerChange<K extends keyof Format, Data extends Format[K]>(
     e: DatabaseUpstreamEvents<Data["consumers"]>
   ) {}
 
-  preBuildDataGetter(key: string) {
+  private preBuildDataGetter(key: string) {
     return async () => ({
       query: await this.queryStorage.getData(key),
       mutation: await this.mutationStorage.getData(key),
@@ -120,12 +120,14 @@ export class ForeverQuery<
     key: K,
     fn: (
       existingMutation:
-        | (Format[K]["data"]["mutation"] &
-            QueryPoolMutationActiveStructures<
-              Format[K]["data"]["mutation"]["mutateData"]
-            >)
+        | QueryPoolMutationActiveStructures<
+            Format[K]["data"]["mutation"]["mutateData"]
+          >
         | undefined
-    ) => Format[K]["data"]["mutation"]
+    ) => Format[K]["data"]["mutation"] &
+      QueryPoolMutationActiveStructures<
+        Format[K]["data"]["mutation"]["mutateData"]
+      >
   ) {
     this.mutationStorage.createOrUpdateData(key, fn);
   }
