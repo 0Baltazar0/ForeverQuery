@@ -2,8 +2,8 @@
   "name": "forever-query",
   "version": "0.0.2",
   "description": "A server state query tool, with an added client state flavour. Heavily inspired by @tanstack/react-query",
-  "main": "src/index.ts",
   "scripts": {
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -29,6 +29,8 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "idb": "^8.0.0",
+    "idb-keyval": "^6.2.1",
     "react": "^18.2.0"
   }
 }
