@@ -48,7 +48,6 @@ export class ForeverQuery<
   private onMutationChange<K extends keyof Format, Data extends Format[K]>(
     e: DatabaseUpstreamEvents<Data["data"]["mutation"]>
   ) {
-    console.log("Mutation is fired");
     this.consumerStorage.getData(e.key).then((consumers) => {
       consumers.forEach((consumer) => {
         if (consumer.onUpdate) consumer.onUpdate({ mutation: e.data });
