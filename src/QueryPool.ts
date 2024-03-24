@@ -120,18 +120,8 @@ export class ForeverQuery<
   pushMutation<K extends keyof Format & string>(
     key: K,
     fn: (
-      existingMutation:
-        | QueryPoolMutationActiveStructures<
-            Format[K]["data"]["mutation"]["mutateData"]
-          >
-        | undefined
-    ) => Format[K]["data"]["mutation"] &
-      QueryPoolMutationActiveStructures<
-        Format[K]["data"]["mutation"]["mutateData"]
-      > &
-      QueryPoolMutationSerialStructures<
-        Format[K]["data"]["mutation"]["mutateData"]
-      >
+      existingMutation: Format[K]["data"]["mutation"] | undefined
+    ) => Format[K]["data"]["mutation"] & QueryPoolMutationSerialStructures<any>
   ) {
     this.mutationStorage.createOrUpdateData(key, fn);
   }
