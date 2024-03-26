@@ -28,7 +28,7 @@ export type QueryPoolMutationSerialStructures<M> = {
   mutateData: M | null;
   mutateState: "idle" | "pending" | "mutating";
   pushMutationAt: number | null;
-  mergeTactic: "refetch" | "overWrite" | "deepMerge" | "simpleMerge" | "none";
+  mergeTactic: "refetch" | "overWrite" | "simpleMerge" | "none";
   lastMutationState: "success" | "failure";
 };
 export type QueryPoolQueryActiveStructures<Q> = {
@@ -36,10 +36,12 @@ export type QueryPoolQueryActiveStructures<Q> = {
   nextQueryUpdate?: ((response: Q) => number) | null;
   queryInterval: number | null;
 };
-export type QueryPoolMutationActiveStructures<M> = {
-  mutateFn?: () => Promise<M>;
-  pushMutationAtFn?: ((data: M) => number) | null;
-  mergeFn?: (oldQuery: any, newData: M) => M;
+export type QueryPoolMutationActiveStructures<Q, M, MutationResponse = any> = {
+  mutateFn?: (data: M) => Promise<MutationResponse>;
+  pushMutationAtFn?:
+    | ((data: QueryPoolMutationSerialStructures<M>) => number)
+    | null;
+  mergeFn?: (oldQuery: Q, mutate: M, reps: MutationResponse) => M;
 };
 export type QueryPoolSerialStructures<Q, M> = {
   query: QueryPoolQuerySerialStructures<Q>;
@@ -47,7 +49,7 @@ export type QueryPoolSerialStructures<Q, M> = {
 };
 
 export type QueryPoolActiveStructures<Q, M> =
-  QueryPoolQueryActiveStructures<Q> & QueryPoolMutationActiveStructures<M>;
+  QueryPoolQueryActiveStructures<Q> & QueryPoolMutationActiveStructures<Q, M>;
 
 export type QueryPoolDataStructure<Q, M> = {
   data: QueryPoolSerialStructures<Q, M>;

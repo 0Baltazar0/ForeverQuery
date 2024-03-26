@@ -13,25 +13,6 @@ import {
 import { NoExtraProperties } from "./interfaces/misc";
 import { MemDB } from "./memDBStorage/MemDBStorage";
 
-function deepMerge(
-  objectOld: { [key: string]: any },
-  ObjectNew: { [key: string]: any }
-) {
-  Object.keys(ObjectNew).forEach((key) => {
-    if (key in objectOld == false) {
-      objectOld[key] = ObjectNew[key];
-    }
-    if (typeof objectOld[key] == "object") {
-      if (Array.isArray(objectOld[key])) {
-        objectOld[key] = ObjectNew[key];
-      }
-      objectOld[key] = deepMerge(objectOld[key], ObjectNew[key]);
-    }
-    objectOld[key] = ObjectNew[key];
-  });
-  return objectOld;
-}
-
 //
 export class QueryManager<
   Format extends {
@@ -41,19 +22,31 @@ export class QueryManager<
   protected queryStorage: CommonDataStorageAPI<
     QueryPoolSerialStructures<any, any>["query"]
   >;
-  protected mutationStorage: MemDB<
-    QueryPoolSerialStructures<any, any>["mutation"] &
-      QueryPoolMutationActiveStructures<any>
+  protected mutationStorage: CommonDataStorageAPI<
+    QueryPoolSerialStructures<any, any>["mutation"]
+  >;
+  protected mutationActiveStorage: MemDB<
+    QueryPoolMutationActiveStructures<any, any>
   >;
   protected consumerStorage: MemDB<ConsumerSubscription[]>;
-  constructor(defaultStorageTactic: "idb" | "memory" = "idb") {
-    if (defaultStorageTactic == "idb" && window.indexedDB) {
+  constructor(
+    queryStorageTactic: "idb" | "memory" = "idb",
+    mutationStorageTactic: "idb" | "memory" = "memory"
+  ) {
+    if (queryStorageTactic == "idb" && window.indexedDB) {
       this.queryStorage = new IndexDBStore(true, this.onQueryChange.bind(this));
     } else {
       this.queryStorage = new MemDB(true, this.onQueryChange.bind(this));
     }
+    if (mutationStorageTactic == "idb" && window.indexedDB) {
+      this.mutationStorage = new IndexDBStore(
+        true,
+        this.onMutationChange.bind(this)
+      );
+    } else
+      this.mutationStorage = new MemDB(true, this.onMutationChange.bind(this));
+    this.mutationActiveStorage = new MemDB(true, () => "");
     this.consumerStorage = new MemDB(true, this.onConsumerChange.bind(this));
-    this.mutationStorage = new MemDB(true, this.onMutationChange.bind(this));
   }
 
   private onQueryChange<K extends keyof Format, Data extends Format[K]>(
@@ -124,11 +117,25 @@ export class QueryManager<
   }
   pushMutation<K extends keyof Format & string>(
     key: K,
-    fn: (
-      existingMutation: Format[K]["data"]["mutation"] | undefined
-    ) => Format[K]["data"]["mutation"] & QueryPoolMutationSerialStructures<any>
+    serialfn: (
+      existingMutation?: QueryPoolMutationSerialStructures<
+        Format[K]["data"]["mutation"]["mutateData"]
+      >
+    ) => QueryPoolMutationSerialStructures<
+      Format[K]["data"]["mutation"]["mutateData"]
+    >,
+    activeFn?: (
+      data?: QueryPoolMutationActiveStructures<
+        Format[K]["data"]["query"]["queryData"],
+        Format[K]["data"]["mutation"]["mutateData"]
+      >
+    ) => QueryPoolMutationActiveStructures<
+      Format[K]["data"]["query"]["queryData"],
+      Format[K]["data"]["mutation"]["mutateData"]
+    >
   ) {
-    this.mutationStorage.createOrUpdateData(key, fn);
+    this.mutationStorage.createOrUpdateData(key, serialfn);
+    if (activeFn) this.mutationActiveStorage.createOrUpdateData(key, activeFn);
   }
 }
 
@@ -250,88 +257,81 @@ export class QueryPool<
     const now = Date.now();
     this.mutationStorage.getAllKeys().then((keys) => {
       keys.map((entryKey) => {
-        this.mutationStorage.getData(entryKey).then((m) => {
-          if (m.mutateState == "mutating") return;
-          if (m.mutateState == "idle") {
-            this.mutationStorage.updateData(entryKey, (old) => ({
-              ...DefaultSerialStructure.mutation,
-            }));
-            return;
-          }
-
-          if (!m.mutateFn) return;
-
-          const mutator = m.mutateFn;
-
-          if (m.pushMutationAtFn && m.pushMutationAtFn(m) > now) return;
-          if (!m.pushMutationAt) return;
-          if (m.pushMutationAt && m.pushMutationAt > now) return;
-          this.mutationStorage.updateData(entryKey, (old) => ({
-            ...DefaultSerialStructure.mutation,
-            ...old,
-            mutateState: "mutating",
-          }));
-          mutator()
-            .then((resp) => {
-              this.mutationStorage.updateData(entryKey, (old) => ({
-                lastMutationState: "success",
-                mergeTactic: "none",
-                mutateData: null,
-                mutateState: "idle",
-                pushMutationAt: null,
-              }));
-              const mergeFn = m.mergeFn;
-              if (mergeFn)
-                this.queryStorage.updateData(entryKey, (old) =>
-                  mergeFn(old, resp)
-                );
-              else
-                switch (m.mergeTactic) {
-                  case "refetch":
-                    this.queryStorage.updateData(entryKey, (old) => ({
-                      ...DefaultSerialStructure.query,
-                      ...old,
-                      nextQueryCall: now,
-                    }));
-                    break;
-                  case "overWrite":
-                    this.queryStorage.updateData(entryKey, (old) => ({
-                      ...DefaultSerialStructure.query,
-                      ...old,
-                      queryData: resp,
-                    }));
-                    break;
-                  case "deepMerge":
-                    this.queryStorage.updateData(entryKey, (old) => ({
-                      ...DefaultSerialStructure.query,
-                      ...old,
-                      queryData: deepMerge(
-                        old?.queryData ??
-                          DefaultSerialStructure.query.queryData,
-                        resp
-                      ),
-                    }));
-                    break;
-                  case "simpleMerge":
-                    this.queryStorage.updateData(entryKey, (old) => ({
-                      ...DefaultSerialStructure.query,
-                      ...old,
-                      queryData: {
-                        ...(old?.queryData ??
-                          DefaultSerialStructure.query.queryData),
-                        ...resp,
-                      },
-                    }));
-                    break;
-                  case "none":
-                    break;
-                }
-            })
-            .catch((err) => {
+        this.mutationActiveStorage.getData(entryKey).then((activeM) => {
+          this.mutationStorage.getData(entryKey).then((m) => {
+            if (m.mutateState == "mutating") return;
+            if (m.mutateState == "idle") {
               this.mutationStorage.updateData(entryKey, (old) => ({
                 ...DefaultSerialStructure.mutation,
               }));
-            });
+              return;
+            }
+
+            if (!activeM.mutateFn) return;
+
+            const mutator = activeM.mutateFn;
+
+            if (activeM.pushMutationAtFn && activeM.pushMutationAtFn(m) > now)
+              return;
+            if (!m.pushMutationAt) return;
+            if (m.pushMutationAt && m.pushMutationAt > now) return;
+            this.mutationStorage.updateData(entryKey, (old) => ({
+              ...DefaultSerialStructure.mutation,
+              ...old,
+              mutateState: "mutating",
+            }));
+            mutator(m.mutateData)
+              .then((resp) => {
+                const mergeFn = activeM.mergeFn;
+                if (mergeFn)
+                  this.queryStorage.updateData(entryKey, (old) =>
+                    mergeFn(old, m.mutateData, resp)
+                  );
+                else
+                  switch (m.mergeTactic) {
+                    case "refetch":
+                      this.queryStorage.updateData(entryKey, (old) => ({
+                        ...DefaultSerialStructure.query,
+                        ...old,
+                        nextQueryCall: now,
+                      }));
+                      break;
+                    case "overWrite":
+                      this.queryStorage.updateData(entryKey, (old) => ({
+                        ...DefaultSerialStructure.query,
+                        ...old,
+                        queryData: resp,
+                      }));
+                      break;
+
+                    case "simpleMerge":
+                      this.queryStorage.updateData(entryKey, (old) => ({
+                        ...DefaultSerialStructure.query,
+                        ...old,
+                        queryData: {
+                          ...(old?.queryData ??
+                            DefaultSerialStructure.query.queryData),
+                          ...resp,
+                        },
+                      }));
+                      break;
+                    case "none":
+                      break;
+                  }
+                this.mutationStorage.updateData(entryKey, (old) => ({
+                  lastMutationState: "success",
+                  mergeTactic: "none",
+                  mutateData: null,
+                  mutateState: "idle",
+                  pushMutationAt: null,
+                }));
+              })
+              .catch((err) => {
+                this.mutationStorage.updateData(entryKey, (old) => ({
+                  ...DefaultSerialStructure.mutation,
+                }));
+              });
+          });
         });
       });
     });
