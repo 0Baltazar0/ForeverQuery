@@ -13,6 +13,7 @@ export const DefaultSerialStructure: QueryPoolSerialStructures<any, any> = {
     mergeTactic: "none",
     mutateState: "idle",
     pushMutationAt: null,
+    mutationMethod: "put",
   },
 };
 
@@ -28,20 +29,24 @@ export type QueryPoolMutationSerialStructures<M> = {
   mutateData: M | null;
   mutateState: "idle" | "pending" | "mutating";
   pushMutationAt: number | null;
-  mergeTactic: "refetch" | "overWrite" | "simpleMerge" | "none";
+  mergeTactic: "refetch" | "overWrite" | "none";
   lastMutationState: "success" | "failure";
+  mutationMethod: "delete" | "patch" | "put";
 };
 export type QueryPoolQueryActiveStructures<Q> = {
   queryFn?: () => Promise<Q>;
-  nextQueryUpdate?: ((response: Q) => number) | null;
+  nextQueryUpdate?: ((data: Q) => number) | null;
   queryInterval: number | null;
 };
-export type QueryPoolMutationActiveStructures<Q, M, MutationResponse = any> = {
-  mutateFn?: (data: M) => Promise<MutationResponse>;
+export type QueryPoolMutationActiveStructures<Q, M> = {
+  mutateFn?: (
+    queryData: Q,
+    mutateData: M
+  ) => Promise<(queryData: Q | undefined) => Promise<Q>>;
+  optimisticUpdate?: (queryData: Q | undefined, mutateData: M) => Q;
   pushMutationAtFn?:
     | ((data: QueryPoolMutationSerialStructures<M>) => number)
     | null;
-  mergeFn?: (oldQuery: Q, mutate: M, reps: MutationResponse) => M;
 };
 export type QueryPoolSerialStructures<Q, M> = {
   query: QueryPoolQuerySerialStructures<Q>;

@@ -10,3 +10,8 @@ type Impossible<K extends keyof any> = {
 // using generics.
 export type NoExtraProperties<T, U extends T = T> = U &
   Impossible<Exclude<keyof U, keyof T>>;
+
+export type QueryPoolConstructorVars = {
+  queryStorageTactic?: "idb" | "memory";
+  mutationStorageTactic?: "idb" | "memory";
+};

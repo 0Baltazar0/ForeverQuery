@@ -1,75 +1,25 @@
-import { IndexDBStore } from "./indexDBStorage/IndexDBStorage";
-import { CommonDataStorageAPI } from "./interfaces/dataStorage";
-import { DatabaseUpstreamEvents } from "./interfaces/internalEvents";
+import { MutationPool } from "./MutationPool";
 import {
   ConsumerSubscription,
   DefaultSerialStructure,
   QueryPoolDataStructure,
-  QueryPoolMutationActiveStructures,
-  QueryPoolMutationSerialStructures,
-  QueryPoolQueryActiveStructures,
   QueryPoolSerialStructures,
 } from "./interfaces/keyCacheStructure";
-import { NoExtraProperties } from "./interfaces/misc";
-import { MemDB } from "./memDBStorage/MemDBStorage";
+import { NoExtraProperties, QueryPoolConstructorVars } from "./interfaces/misc";
 
 //
 export class QueryManager<
   Format extends {
     [key: string]: QueryPoolDataStructure<any, any>;
   }
-> {
-  protected queryStorage: CommonDataStorageAPI<
-    QueryPoolSerialStructures<any, any>["query"]
-  >;
-  protected mutationStorage: CommonDataStorageAPI<
-    QueryPoolSerialStructures<any, any>["mutation"]
-  >;
-  protected mutationActiveStorage: MemDB<
-    QueryPoolMutationActiveStructures<any, any>
-  >;
-  protected consumerStorage: MemDB<ConsumerSubscription[]>;
-  constructor(
-    queryStorageTactic: "idb" | "memory" = "idb",
-    mutationStorageTactic: "idb" | "memory" = "memory"
-  ) {
-    if (queryStorageTactic == "idb" && window.indexedDB) {
-      this.queryStorage = new IndexDBStore(true, this.onQueryChange.bind(this));
-    } else {
-      this.queryStorage = new MemDB(true, this.onQueryChange.bind(this));
-    }
-    if (mutationStorageTactic == "idb" && window.indexedDB) {
-      this.mutationStorage = new IndexDBStore(
-        true,
-        this.onMutationChange.bind(this)
-      );
-    } else
-      this.mutationStorage = new MemDB(true, this.onMutationChange.bind(this));
-    this.mutationActiveStorage = new MemDB(true, () => "");
-    this.consumerStorage = new MemDB(true, this.onConsumerChange.bind(this));
+> extends MutationPool<Format> {
+  constructor(settings: QueryPoolConstructorVars) {
+    super(settings);
+    const fn = this.fetchQueries.bind(this);
+    setInterval(() => {
+      fn;
+    }, 1000);
   }
-
-  private onQueryChange<K extends keyof Format, Data extends Format[K]>(
-    e: DatabaseUpstreamEvents<Data["data"]["query"]>
-  ) {
-    this.consumerStorage.getData(e.key).then((consumers) => {
-      consumers.forEach((consumer) => {
-        if (consumer.onUpdate) consumer.onUpdate({ query: e.data });
-      });
-    });
-  }
-  private onMutationChange<K extends keyof Format, Data extends Format[K]>(
-    e: DatabaseUpstreamEvents<Data["data"]["mutation"]>
-  ) {
-    this.consumerStorage.getData(e.key).then((consumers) => {
-      consumers.forEach((consumer) => {
-        if (consumer.onUpdate) consumer.onUpdate({ mutation: e.data });
-      });
-    });
-  }
-  private onConsumerChange<K extends keyof Format, Data extends Format[K]>(
-    e: DatabaseUpstreamEvents<Data["consumers"]>
-  ) {}
 
   private preBuildDataGetter(key: string) {
     return async () => ({
@@ -115,225 +65,73 @@ export class QueryManager<
         consumers?.filter((cs) => cs.consumerId != consumerId) ?? []
     );
   }
-  pushMutation<K extends keyof Format & string>(
-    key: K,
-    serialfn: (
-      existingMutation?: QueryPoolMutationSerialStructures<
-        Format[K]["data"]["mutation"]["mutateData"]
-      >
-    ) => QueryPoolMutationSerialStructures<
-      Format[K]["data"]["mutation"]["mutateData"]
-    >,
-    activeFn?: (
-      data?: QueryPoolMutationActiveStructures<
-        Format[K]["data"]["query"]["queryData"],
-        Format[K]["data"]["mutation"]["mutateData"]
-      >
-    ) => QueryPoolMutationActiveStructures<
-      Format[K]["data"]["query"]["queryData"],
-      Format[K]["data"]["mutation"]["mutateData"]
-    >
-  ) {
-    this.mutationStorage.createOrUpdateData(key, serialfn);
-    if (activeFn) this.mutationActiveStorage.createOrUpdateData(key, activeFn);
-  }
-}
+  private async fetchQueries() {
+    const now = Date.now();
+    const allActiveKeys = await this.consumerStorage.getAllKeys();
+    for (const activeKey of allActiveKeys) {
+      const activeData = await this.consumerStorage.getData(activeKey);
+      const fetchFn = activeData.reduce<ConsumerSubscription["queryFn"]>(
+        (res, curr) => {
+          if (!res && curr.queryFn) return curr.queryFn;
+          if (res && curr.queryFn && curr.enforceDefinitions)
+            return curr.queryFn;
+          return res;
+        },
+        undefined
+      );
+      if (!fetchFn) break;
+      const data = await this.queryStorage.getData(activeKey);
+      if (data.queryState !== "idle") break;
+      const nextQueryUpdate = activeData.reduce<
+        ConsumerSubscription["nextQueryUpdate"]
+      >((res, curr) => {
+        if (!res && curr.nextQueryUpdate) return curr.nextQueryUpdate;
+        if (res && curr.nextQueryUpdate && curr.enforceDefinitions)
+          return curr.nextQueryUpdate;
+        return res;
+      }, undefined);
+      if (nextQueryUpdate && nextQueryUpdate(data.queryData) > now) break;
+      if (!nextQueryUpdate && (!data.nextQueryCall || data.nextQueryCall > now))
+        break;
+      const interval = activeData.reduce<ConsumerSubscription["queryInterval"]>(
+        (res, curr) => {
+          if (!res && curr.queryInterval) return curr.queryInterval;
+          if (res && curr.queryInterval && curr.enforceDefinitions)
+            return curr.queryInterval;
+          return res;
+        },
+        null
+      );
 
-export class QueryPool<
-  Format extends {
-    [key: string]: QueryPoolDataStructure<any, any>;
-  }
-> extends QueryManager<Format> {
-  constructor(defaultStorageTactic?: "idb" | "memory") {
-    super(defaultStorageTactic);
-    const fetching = this.fetchQueries.bind(this);
-    const mutating = this.executeMutations.bind(this);
-    setInterval(() => {
-      fetching();
-      mutating();
-    }, 1000);
-  }
-  private callQuery(
-    fn: () => Promise<any>,
-    entryKey: string,
-    nextQueryCalculator: QueryPoolQueryActiveStructures<any>["nextQueryUpdate"],
-    nextInterval: number | null
-  ) {
-    fn()
-      .then((newQData) => {
-        const finish = Date.now();
-        const nQ = nextQueryCalculator
-          ? nextQueryCalculator(newQData)
-          : nextInterval
-          ? finish + nextInterval
-          : nextInterval;
-        this.queryStorage.updateData(entryKey, (old) => ({
-          queryData: newQData,
-          nextQueryCall: nQ,
-          queryState: "idle",
-          lastQueryState: "success",
-          lastSuccessfullQuery: finish,
-          lastQuery: finish,
-        }));
-      })
-      .catch((err) => {
-        const finish = Date.now();
-        const nQ = nextQueryCalculator
-          ? nextQueryCalculator(err)
-          : nextInterval
-          ? finish + nextInterval
-          : null;
-        this.queryStorage.updateData(entryKey, (old) => ({
-          ...old!,
-          lastQuery: finish,
-          queryState: "idle",
-          lastQueryState: "failure",
-          nextQueryCall: nQ,
-        }));
-      });
-  }
-
-  private prepareQuery(
-    now: number,
-    entryKey: string,
-    fn: () => Promise<any>,
-    nextQueryCalculator: QueryPoolQueryActiveStructures<any>["nextQueryUpdate"],
-    nextInterval: number | null
-  ) {
-    this.queryStorage.getData(entryKey).then((q) => {
-      if (q.queryState == "fetching" || q.nextQueryCall == null) return;
-
-      this.queryStorage.updateData(entryKey, (old) => ({
-        ...old!,
+      this.queryStorage.createOrUpdateData(activeKey, (old) => ({
+        ...DefaultSerialStructure.query,
+        ...old,
         queryState: "fetching",
       }));
-      if (!q.nextQueryCall || q.nextQueryCall < now) {
-        this.callQuery(fn, entryKey, nextQueryCalculator, nextInterval);
+      try {
+        const resp = fetchFn();
+
+        this.queryStorage.createOrUpdateData(activeKey, (old) => ({
+          ...DefaultSerialStructure.query,
+          ...old,
+          queryData: resp,
+          nextQueryCall: interval ? Date.now() + interval : interval,
+          queryState: "idle",
+          lastQueryState: "success",
+          lastSuccessfullQuery: interval ? Date.now() + interval : interval,
+          lastQuery: now,
+        }));
+      } catch (error) {
+        this.queryStorage.createOrUpdateData(activeKey, (old) => ({
+          ...DefaultSerialStructure.query,
+          ...old,
+          nextQueryCall: interval ? Date.now() + interval : interval,
+          queryState: "idle",
+          lastQueryState: "failure",
+          lastQuery: now,
+        }));
+        break;
       }
-    });
-  }
-
-  private extractConsumerProperties(consumers: ConsumerSubscription[]) {
-    const nextInterval = consumers.reduce<null | number>((res, curr) => {
-      if (!res || (res && curr.queryInterval && res > curr.queryInterval)) {
-        return curr.queryInterval;
-      }
-      return res;
-    }, null);
-    const nextQueryCalculator = consumers.reduce<((r: any) => number) | null>(
-      (res, curr) => {
-        if (res) return res;
-        if (curr.nextQueryUpdate) return curr.nextQueryUpdate;
-        return null;
-      },
-      null
-    );
-    const fn =
-      consumers.find((el) => el.enforceDefinitions && el.queryFn)?.queryFn ??
-      consumers.find((el) => el.queryFn)?.queryFn;
-    return { fn, nextQueryCalculator, nextInterval };
-  }
-
-  private fetchQueries() {
-    const now = Date.now();
-    this.consumerStorage.getAllKeys().then((keys) => {
-      keys.forEach((entryKey) => {
-        this.consumerStorage.getData(entryKey).then((consumers) => {
-          const { fn, nextInterval, nextQueryCalculator } =
-            this.extractConsumerProperties(consumers);
-          if (!fn) return;
-          this.prepareQuery(
-            now,
-            entryKey,
-            fn,
-            nextQueryCalculator,
-            nextInterval
-          );
-        });
-      });
-    });
-  }
-  private executeMutations() {
-    const now = Date.now();
-    this.mutationStorage.getAllKeys().then((keys) => {
-      keys.map((entryKey) => {
-        this.mutationActiveStorage.getData(entryKey).then((activeM) => {
-          this.mutationStorage.getData(entryKey).then((m) => {
-            if (m.mutateState == "mutating") return;
-            if (m.mutateState == "idle") {
-              this.mutationStorage.updateData(entryKey, (old) => ({
-                ...DefaultSerialStructure.mutation,
-              }));
-              return;
-            }
-
-            if (!activeM.mutateFn) return;
-
-            const mutator = activeM.mutateFn;
-
-            if (activeM.pushMutationAtFn && activeM.pushMutationAtFn(m) > now)
-              return;
-            if (!m.pushMutationAt) return;
-            if (m.pushMutationAt && m.pushMutationAt > now) return;
-            this.mutationStorage.updateData(entryKey, (old) => ({
-              ...DefaultSerialStructure.mutation,
-              ...old,
-              mutateState: "mutating",
-            }));
-            mutator(m.mutateData)
-              .then((resp) => {
-                const mergeFn = activeM.mergeFn;
-                if (mergeFn)
-                  this.queryStorage.updateData(entryKey, (old) =>
-                    mergeFn(old, m.mutateData, resp)
-                  );
-                else
-                  switch (m.mergeTactic) {
-                    case "refetch":
-                      this.queryStorage.updateData(entryKey, (old) => ({
-                        ...DefaultSerialStructure.query,
-                        ...old,
-                        nextQueryCall: now,
-                      }));
-                      break;
-                    case "overWrite":
-                      this.queryStorage.updateData(entryKey, (old) => ({
-                        ...DefaultSerialStructure.query,
-                        ...old,
-                        queryData: resp,
-                      }));
-                      break;
-
-                    case "simpleMerge":
-                      this.queryStorage.updateData(entryKey, (old) => ({
-                        ...DefaultSerialStructure.query,
-                        ...old,
-                        queryData: {
-                          ...(old?.queryData ??
-                            DefaultSerialStructure.query.queryData),
-                          ...resp,
-                        },
-                      }));
-                      break;
-                    case "none":
-                      break;
-                  }
-                this.mutationStorage.updateData(entryKey, (old) => ({
-                  lastMutationState: "success",
-                  mergeTactic: "none",
-                  mutateData: null,
-                  mutateState: "idle",
-                  pushMutationAt: null,
-                }));
-              })
-              .catch((err) => {
-                this.mutationStorage.updateData(entryKey, (old) => ({
-                  ...DefaultSerialStructure.mutation,
-                }));
-              });
-          });
-        });
-      });
-    });
+    }
   }
 }

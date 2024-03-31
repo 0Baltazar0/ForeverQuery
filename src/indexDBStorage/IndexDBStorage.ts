@@ -57,6 +57,17 @@ export class IndexDBStore<T = any> implements CommonDataStorageAPI<T> {
         this.createData(key, fn(undefined));
       });
   }
+  async asyncCreateOrUpdateData(
+    key: string,
+    fn: (old: T | undefined) => NoExtraProperties<T>
+  ) {
+    try {
+      await this.getData(key);
+      this.updateData(key, fn);
+    } catch {
+      this.createData(key, fn(undefined));
+    }
+  }
   async getAllKeys() {
     return (await keys()) as string[];
   }
